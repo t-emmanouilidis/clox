@@ -1,1 +1,5 @@
-clox
+clox.exe
+cmake-build-debug
+script.lox
+.idea
+clox.iml
