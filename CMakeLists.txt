@@ -24,6 +24,5 @@ add_executable(clox
         vm.h
         object.c
         object.h
-        chunk.c
         table.c
         table.h)

@@ -124,11 +124,10 @@ ObjString *tableFindString(Table *table, const char *chars, int length, uint32_t
             if (IS_NIL(entry->value)) {
                 return NULL;
             }
-            if (entry->key->length == length &&
-                entry->key->hash == hash &&
-                memcmp(entry->key->chars, chars, length) == 0) {
-                return entry->key;
-            }
+        } else if (entry->key->length == length &&
+                   entry->key->hash == hash &&
+                   memcmp(entry->key->chars, chars, length) == 0) {
+            return entry->key;
         }
 
         index = (index + 1) % table->capacity;
