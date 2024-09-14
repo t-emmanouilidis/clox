@@ -10,6 +10,8 @@ typedef enum {
     OP_TRUE,
     OP_FALSE,
     OP_POP,
+    OP_GET_LOCAL,
+    OP_SET_LOCAL,
     OP_GET_GLOBAL,
     OP_DEFINE_GLOBAL,
     OP_SET_GLOBAL,
@@ -24,6 +26,8 @@ typedef enum {
     OP_NOT,
     OP_NEGATE,
     OP_PRINT,
+    OP_JUMP,
+    OP_JUMP_IF_FALSE,
     OP_RETURN,
 } OpCode;
 
@@ -33,7 +37,7 @@ typedef struct {
     uint8_t *code;
     int *lines;
     ValueArray constants;
-} Chunk;
+} Chunk; // chunk of byte `code
 
 void initChunk(Chunk *chunk);
 
