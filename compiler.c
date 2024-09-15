@@ -126,6 +126,17 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte2);
 }
 
+static void emitLoop(int loopStart) {
+    emitByte(OP_LOOP);
+
+    int offset = currentChunk()->count - loopStart + 2;
+    if (offset > UINT16_MAX) {
+        error("Loop body too large.");
+    }
+    emitByte((offset >> 8) & 0xff);
+    emitByte(offset & 0xff);
+}
+
 static int emitJump(uint8_t instruction) {
     emitByte(instruction); // 0
     emitByte(0xff); // 1
@@ -204,6 +215,8 @@ static ParseRule *getRule(TokenType type);
 
 static void parsePrecedence(Precedence precedence);
 
+static int resolveLocal(Compiler *compiler, Token *name);
+
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule *rule = getRule(operatorType);
@@ -269,6 +282,27 @@ static void grouping(bool canAssign) {
 static void number(bool canAssign) {
     double value = strtod(parser.previous.start, NULL);
     emitConstant(NUMBER_VAL(value));
+}
+
+static void and_(bool canAssign) {
+    int endJump = emitJump(OP_JUMP_IF_FALSE); // this is the location before the right expression
+
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_AND); // parse the right expression
+
+    patchJump(endJump); // if condition is false then we jump after right expression
+}
+
+static void or_(bool canAssign) {
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(elseJump); // if left operand is false, we jump the previous jump instruction to eval the right operand
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_OR);
+    patchJump(endJump); // if left operand is true, then we jump over the OP_JUMP_IF_FALSE and the right operand
 }
 
 static void string(bool canAssign) {
@@ -341,7 +375,7 @@ ParseRule rules[] = {
     [TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
     [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
-    [TOKEN_AND] = {NULL, NULL, PREC_NONE},
+    [TOKEN_AND] = {NULL, and_, PREC_AND},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
     [TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
     [TOKEN_FALSE] = {literal, NULL, PREC_NONE},
@@ -349,7 +383,7 @@ ParseRule rules[] = {
     [TOKEN_FUN] = {NULL, NULL, PREC_NONE},
     [TOKEN_IF] = {NULL, NULL, PREC_NONE},
     [TOKEN_NIL] = {literal, NULL, PREC_NONE},
-    [TOKEN_OR] = {NULL, NULL, PREC_NONE},
+    [TOKEN_OR] = {NULL, or_, PREC_OR},
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
     [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
@@ -517,6 +551,20 @@ static void printStatement() {
     emitByte(OP_PRINT);
 }
 
+static void whileStatement() {
+    int loopStart = currentChunk()->count; // instruction offset before the expression
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    expression(); // the condition
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+    int exitJump = emitJump(OP_JUMP_IF_FALSE); // if condition is false we jump after the while body
+    emitByte(OP_POP); // if we jump to the end, this POP is never executed
+    statement();
+    emitLoop(loopStart);
+    patchJump(exitJump); // if condition is false we end up here and we pop the condition value
+    emitByte(OP_POP);
+}
+
 static void synchronize() {
     parser.panicMode = false;
 
@@ -556,6 +604,8 @@ static void statement() {
         printStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
+    } else if (match(TOKEN_WHILE)) {
+        whileStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();
