@@ -29,14 +29,15 @@ typedef enum {
     OP_JUMP,
     OP_JUMP_IF_FALSE,
     OP_LOOP,
+    OP_CALL,
     OP_RETURN,
 } OpCode;
 
 typedef struct {
     int count;
     int capacity;
-    uint8_t *code;
-    int *lines;
+    uint8_t *code; // array of commands/bytes
+    int *lines; // array of lines each of the commands above correspond to
     ValueArray constants;
 } Chunk; // chunk of byte `code
 
