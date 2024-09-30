@@ -18,16 +18,23 @@ static Obj *allocateObject(size_t size, ObjType type) {
     return object;
 }
 
-ObjFunction* newFunction() {
-    ObjFunction* function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+ObjClosure *newClosure(ObjFunction *function) {
+    ObjClosure *closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+    closure->function = function;
+    return closure;
+}
+
+ObjFunction *newFunction() {
+    ObjFunction *function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
     function->arity = 0;
+    function->upValueCount = 0;
     function->name = NULL;
     initChunk(&function->chunk);
     return function;
 }
 
-ObjNative* newNative(NativeFn function) {
-    ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+ObjNative *newNative(NativeFn function) {
+    ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
     native->function = function;
     return native;
 }
@@ -52,7 +59,7 @@ static uint32_t hashString(char *key, int length) {
 
 ObjString *takeString(char *chars, int length) {
     uint32_t hash = hashString(chars, length);
-    ObjString* interned = tableFindString(&vm.strings, chars, length, hash);
+    ObjString *interned = tableFindString(&vm.strings, chars, length, hash);
     if (interned != NULL) {
         FREE_ARRAY(char, chars, length + 1);
         return interned;
@@ -62,7 +69,7 @@ ObjString *takeString(char *chars, int length) {
 
 ObjString *copyString(const char *chars, int length) {
     uint32_t hash = hashString(chars, length);
-    ObjString* interned = tableFindString(&vm.strings, chars, length, hash);
+    ObjString *interned = tableFindString(&vm.strings, chars, length, hash);
     if (interned != NULL) {
         return interned;
     }
@@ -72,7 +79,7 @@ ObjString *copyString(const char *chars, int length) {
     return allocateString(heapChars, length, hash);
 }
 
-static void printFunction(ObjFunction* function) {
+static void printFunction(ObjFunction *function) {
     if (function->name == NULL) {
         printf("<script>");
         return;
@@ -82,6 +89,10 @@ static void printFunction(ObjFunction* function) {
 
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_CLOSURE: {
+            printFunction(AS_CLOSURE(value)->function);
+            break;
+        }
         case OBJ_FUNCTION: {
             printFunction(AS_FUNCTION(value));
             break;

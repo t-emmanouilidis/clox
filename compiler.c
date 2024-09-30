@@ -47,6 +47,11 @@ typedef struct {
     int depth;
 } Local;
 
+typedef struct {
+    uint8_t index;
+    bool isLocal;
+} UpValue;
+
 typedef enum {
     TYPE_FUNCTION,
     TYPE_SCRIPT
@@ -59,6 +64,7 @@ typedef struct Compiler {
 
     Local locals[UINT8_COUNT];
     int localCount;
+    UpValue upValues[UINT8_COUNT];
     int scopeDepth;
 } Compiler;
 
@@ -244,6 +250,8 @@ static void parsePrecedence(Precedence precedence);
 
 static int resolveLocal(Compiler *compiler, Token *name);
 
+static int resolveUpValue(Compiler *compiler, Token *name);
+
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule *rule = getRule(operatorType);
@@ -365,6 +373,9 @@ static void namedVariable(Token name, bool canAssign) {
     if (arg != -1) {
         getOp = OP_GET_LOCAL;
         setOp = OP_SET_LOCAL;
+    } else if ((arg = resolveUpValue(current, &name)) != -1) {
+        getOp = OP_GET_UPVALUE;
+        setOp = OP_SET_UPVALUE;
     } else {
         arg = identifierConstant(&name);
         getOp = OP_GET_GLOBAL;
@@ -485,6 +496,37 @@ static int resolveLocal(Compiler *compiler, Token *name) {
             }
             return i;
         }
+    }
+    return -1;
+}
+
+static int addUpValue(Compiler* compiler, uint8_t index, bool isLocal) {
+    int upValueCount = compiler->function->upValueCount;
+
+    for (int i = 0; i < upValueCount; i++) {
+        UpValue* upValue = compiler->upValues[i];
+        if (upValue->index == index && upValue->isLocal = isLocal) {
+            return i;
+        }
+    }
+
+    if (upValueCount == UINT8_COUNT) {
+        error("Too many closure variables in function.");
+        return 0;
+    }
+
+    compiler->upValues[upValueCount].isLocal = isLocal;
+    compiler->upValues[upValueCount].index = index;
+    return compiler->function->upValueCount++;
+}
+
+static int resolveUpValue(Compiler *compiler, Token *name) {
+    if (compiler->enclosing == NULL) {
+        return -1;
+    }
+    int local = resolveLocal(compiler->enclosing, name);
+    if (local != -1) {
+        return addUpValue(compiler, (uint8_t)local, true);
     }
     return -1;
 }
