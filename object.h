@@ -12,49 +12,59 @@
 #define IS_NATIVE(value) isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value) isObjType(value, OBJ_STRING)
 
-#define AS_CLOSURE(value) ((ObjClosure*)AS_OBJ(value))
-#define AS_FUNCTION(value) ((ObjFunction*)AS_OBJ(value))
-#define AS_NATIVE(value) (((ObjNative*)AS_OBJ(value))->function)
-#define AS_STRING(value) ((ObjString*)AS_OBJ(value))
-#define AS_CSTRING(value) (((ObjString*)AS_OBJ(value))->chars)
+#define AS_CLOSURE(value) ((ObjClosure *)AS_OBJ(value))
+#define AS_FUNCTION(value) ((ObjFunction *)AS_OBJ(value))
+#define AS_NATIVE(value) (((ObjNative *)AS_OBJ(value))->function)
+#define AS_STRING(value) ((ObjString *)AS_OBJ(value))
+#define AS_CSTRING(value) (((ObjString *)AS_OBJ(value))->chars)
 
 typedef enum {
-    OBJ_CLOSURE,
-    OBJ_FUNCTION,
-    OBJ_STRING,
-    OBJ_NATIVE
+  OBJ_CLOSURE,
+  OBJ_FUNCTION,
+  OBJ_STRING,
+  OBJ_UPVALUE,
+  OBJ_NATIVE
 } ObjType;
 
 struct Obj {
-    ObjType type;
-    struct Obj *next;
+  ObjType type;
+  struct Obj *next;
 };
 
 typedef struct {
-    Obj obj;
-    int arity;
-    int upValueCount;
-    Chunk chunk;
-    ObjString *name;
+  Obj obj;
+  int arity;
+  int upValueCount;
+  Chunk chunk;
+  ObjString *name;
 } ObjFunction;
 
 typedef Value (*NativeFn)(int argCount, Value *args);
 
 typedef struct {
-    Obj obj;
-    NativeFn function;
+  Obj obj;
+  NativeFn function;
 } ObjNative;
 
 struct ObjString {
-    Obj obj;
-    int length;
-    char *chars;
-    uint32_t hash;
+  Obj obj;
+  int length;
+  char *chars;
+  uint32_t hash;
 };
 
+typedef struct ObjUpValue {
+  Obj obj;
+  Value *location;
+  Value closed;
+  struct ObjUpValue* next;
+} ObjUpValue;
+
 typedef struct {
-    Obj obj;
-    ObjFunction *function;
+  Obj obj;
+  ObjFunction *function;
+  ObjUpValue **upValues;
+  int upValueCount;
 } ObjClosure;
 
 ObjClosure *newClosure(ObjFunction *function);
@@ -67,10 +77,12 @@ ObjString *takeString(char *chars, int length);
 
 ObjString *copyString(const char *chars, int length);
 
+ObjUpValue *newUpValue(Value *slot);
+
 void printObject(Value value);
 
 static inline bool isObjType(Value value, ObjType type) {
-    return IS_OBJ(value) && AS_OBJ(value)->type == type;
+  return IS_OBJ(value) && AS_OBJ(value)->type == type;
 }
 
 #endif

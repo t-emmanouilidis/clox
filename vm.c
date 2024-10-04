@@ -19,6 +19,7 @@ static Value clockNative(int argCount, Value *args) {
 static void resetStack() {
     vm.stackTop = vm.stack;
     vm.frameCount = 0;
+    vm.openUpValues = NULL;
 }
 
 static void runtimeError(const char *format, ...) {
@@ -119,6 +120,36 @@ static bool callValue(Value callee, int argCount) {
     return false;
 }
 
+static ObjUpValue* captureUpValue(Value* local) {
+    ObjUpValue* previousUpValue = NULL;
+    ObjUpValue* current = vm.openUpValues;
+    while (current != NULL && current->location > local) {
+        previousUpValue = current;
+        current = current->next;
+    }
+    if (current != NULL && current->location == local) {
+        return current;
+    }
+
+    ObjUpValue* created = newUpValue(local);
+    created->next = current;
+    if (previousUpValue == NULL) {
+        vm.openUpValues = created;
+    } else {
+        previousUpValue->next = created;
+    }
+    return created;
+}
+
+static void closeUpValues(Value* last) {
+    while (vm.openUpValues != NULL && vm.openUpValues->location >= last) {
+        ObjUpValue* upValue = vm.openUpValues;
+        upValue->closed = *upValue->location; // dereference the location and get the value to the closed field
+        upValue->location = &upValue->closed; // location now points to the closed field
+        vm.openUpValues = upValue->next;
+    }
+}
+
 static bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
@@ -162,7 +193,7 @@ static InterpretResult run() {
 
     for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
-        printf("         ");
+        printf("        ");
         for (Value *slot = vm.stack; slot < vm.stackTop; slot++) {
             printf("[ ");
             printValue(*slot);
@@ -225,6 +256,16 @@ static InterpretResult run() {
                     runtimeError("Undefined variable '%s'.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
+                break;
+            }
+            case OP_GET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                push(*frame->closure->upValues[slot]->location);
+                break;
+            }
+            case OP_SET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                *frame->closure->upValues[slot]->location = peek(0);
                 break;
             }
             case OP_EQUAL: {
@@ -306,10 +347,26 @@ static InterpretResult run() {
                 ObjFunction *function = AS_FUNCTION(READ_CONSTANT());
                 ObjClosure *closure = newClosure(function);
                 push(OBJ_VAL(closure));
+                for (int i = 0; i < closure->upValueCount; i++) {
+                    uint8_t isLocal = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+                    if (isLocal) {
+                        closure->upValues[i] = captureUpValue(frame->slots + index);
+                    } else {
+                        closure->upValues[i] = frame->closure->upValues[index];
+                    }
+                }
+                break;
+            }
+            case OP_CLOSE_UPVALUE: {
+                closeUpValues(vm.stackTop - 1); // we know that the variable is on top of the stack.
+                // We need to move it from the stack to the heap.
+                pop(); // discard stack value
                 break;
             }
             case OP_RETURN: {
                 Value result = pop();
+                closeUpValues(frame->slots);
                 vm.frameCount--;
                 if (vm.frameCount == 0) {
                     pop();
